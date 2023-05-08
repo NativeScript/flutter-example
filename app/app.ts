@@ -5,7 +5,8 @@ purpose of the file is to pass control to the app’s first module.
 */
 
 import { Application } from '@nativescript/core'
-
+import { init } from '@nativescript/flutter';
+init();
 Application.run({ moduleName: 'app-root' })
 
 /*

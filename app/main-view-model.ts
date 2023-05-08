@@ -1,38 +1,57 @@
-import { Observable } from '@nativescript/core'
+import { Observable, Utils } from "@nativescript/core";
+import { Bluetooth, Peripheral } from "@nativescript-community/ble";
+import { Flutter, FlutterChannelType } from "@nativescript/flutter";
 
 export class HelloWorldModel extends Observable {
-  private _counter: number
-  private _message: string
+  flutter: Flutter;
+  channel: FlutterChannelType;
+	bluetooth: Bluetooth;
+	discoveredPeripherals: Array<{ name: string; address: string }>;
+	throttleScanResults: () => void;
 
   constructor() {
-    super()
-
-    // Initialize default values.
-    this._counter = 42
-    this.updateMessage()
+    super();
+    this.bluetooth = new Bluetooth();
+		this.channel = {
+			startScanning: this._startScanning.bind(this),
+			stopScanning: this._stopScanning.bind(this),
+		};
+		// reduce extraneous bluetooth scan results when emitting to Flutter
+		this.throttleScanResults = Utils.throttle(this._throttleScanResults.bind(this), 600);
   }
 
-  get message(): string {
-    return this._message
-  }
+  private _throttleScanResults() {
+		if (this.flutter) {
+			this.flutter.sendMessage('scanResults', this.discoveredPeripherals);
+		}
+	}
 
-  set message(value: string) {
-    if (this._message !== value) {
-      this._message = value
-      this.notifyPropertyChange('message', value)
-    }
-  }
+	private _stopScanning() {
+		if (this.bluetooth) {
+			this.bluetooth.stopScanning();
+			this.bluetooth.off(Bluetooth.device_discovered_event);
+			this.flutter.sendMessage('stoppedScanning');
+		}
+	}
 
-  onTap() {
-    this._counter--
-    this.updateMessage()
-  }
-
-  private updateMessage() {
-    if (this._counter <= 0) {
-      this.message = 'Hoorraaay! You unlocked the NativeScript clicker achievement!'
-    } else {
-      this.message = `${this._counter} taps left`
-    }
-  }
+	private _startScanning() {
+		this.bluetooth.on(Bluetooth.device_discovered_event, (result: any) => {
+			const peripheral = <Peripheral>result.data;
+			if (peripheral) {
+				if (!this.discoveredPeripherals) {
+					this.discoveredPeripherals = [];
+				}
+				if (peripheral.name) {
+					if (!this.discoveredPeripherals.find((p) => p.address === peripheral.UUID)) {
+						this.discoveredPeripherals.push({
+							name: peripheral.name.trim(),
+							address: peripheral.UUID?.trim(),
+						});
+					}
+					this.throttleScanResults();
+				}
+			}
+		});
+		this.bluetooth.startScanning({});
+	}
 }
