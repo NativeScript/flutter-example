@@ -1,0 +1,280 @@
+diff --git a/node_modules/@nativescript-community/ble/index.android.js b/node_modules/@nativescript-community/ble/index.android.js
+index 69d546e..2c2fdb1 100644
+--- a/node_modules/@nativescript-community/ble/index.android.js
++++ b/node_modules/@nativescript-community/ble/index.android.js
+@@ -28,6 +28,7 @@ const LOLLIPOP = 21;
+ const MARSHMALLOW = 23;
+ const OREO = 26;
+ const ANDROID10 = 29;
++const ANDROID12 = 31;
+ const MAX_MTU = 247;
+ export var ScanMode;
+ (function (ScanMode) {
+@@ -1080,6 +1081,10 @@ export class Bluetooth extends BluetoothCommon {
+             // CLog(CLogTypes.info, 'app context', ctx);
+             const neededPermission = sdkVersion < ANDROID10 ? android.Manifest.permission.ACCESS_COARSE_LOCATION : android.Manifest.permission.ACCESS_FINE_LOCATION;
+             hasPermission = android.content.pm.PackageManager.PERMISSION_GRANTED === androidx.core.content.ContextCompat.checkSelfPermission(ctx, neededPermission);
++            if (hasPermission && sdkVersion >= ANDROID12) {
++                    hasPermission = [android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_CONNECT].every((p) =>
++                        android.content.pm.PackageManager.PERMISSION_GRANTED === androidx.core.content.ContextCompat.checkSelfPermission(ctx, p));
++            }
+             if (Trace.isEnabled()) {
+                 CLog(CLogTypes.info, `coarseLocationPermissionGranted ---- ${neededPermission} permission granted?`, hasPermission);
+             }
+@@ -1109,9 +1114,13 @@ export class Bluetooth extends BluetoothCommon {
+             };
+             // grab the permission dialog result
+             andApp.on(AndroidApplication.activityRequestPermissionsEvent, permissionCb);
+-            const neededPermission = sdkVersion < ANDROID10 ? android.Manifest.permission.ACCESS_COARSE_LOCATION : android.Manifest.permission.ACCESS_FINE_LOCATION;
++            const neededPermissions = sdkVersion < ANDROID10
++                ? [android.Manifest.permission.ACCESS_COARSE_LOCATION]
++                : sdkVersion < ANDROID12
++                    ? [android.Manifest.permission.ACCESS_FINE_LOCATION]
++                    : [android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_CONNECT];
+             // invoke the permission dialog
+-            androidx.core.app.ActivityCompat.requestPermissions(this._getActivity(), [neededPermission], ACCESS_LOCATION_PERMISSION_REQUEST_CODE);
++            androidx.core.app.ActivityCompat.requestPermissions(this._getActivity(), neededPermissions, ACCESS_LOCATION_PERMISSION_REQUEST_CODE);
+         });
+     }
+     getAndroidLocationManager() {
+@@ -1487,77 +1496,103 @@ export class Bluetooth extends BluetoothCommon {
+             if (Trace.isEnabled()) {
+                 CLog(CLogTypes.info, methodName, '---- Connecting to peripheral with UUID:', pUUID);
+             }
+-            Object.assign(stateObject, {
+-                state: 'connecting',
+-                onConnected: args.onConnected,
+-                onDisconnected: args.onDisconnected
+-                // device: gatt // TODO rename device to gatt?
+-            });
+-            await new Promise((resolve, reject) => {
+-                const clearListeners = () => {
+-                    this.bluetoothGattCallback.removeSubDelegate(subD);
+-                    this.removeDisconnectListener(onDisconnect);
+-                };
+-                const onError = (err) => {
+-                    reject(err);
+-                    clearListeners();
+-                };
+-                const onDisconnect = (address) => {
+-                    if (address === pUUID) {
+-                        onError(new BluetoothError(BluetoothCommon.msg_peripheral_disconnected, {
+-                            method: methodName,
+-                            arguments: args
+-                        }));
+-                    }
+-                };
+-                const subD = {
+-                    onConnectionStateChange: (gatt, status, newState) => {
+-                        const device = gatt.getDevice();
+-                        let UUID = null;
+-                        if (device == null) {
+-                            // happens some time, why ... ?
+-                        }
+-                        else {
+-                            UUID = device.getAddress();
+-                        }
+-                        if (Trace.isEnabled()) {
+-                            CLog(CLogTypes.info, methodName, '---- onConnectionStateChange:', UUID, pUUID, newState, status);
+-                        }
+-                        if (UUID === pUUID) {
+-                            if (newState === android.bluetooth.BluetoothProfile.STATE_CONNECTED && status === GATT_SUCCESS) {
+-                                resolve();
+-                            }
+-                            else {
+-                                reject();
+-                            }
+-                            clearListeners();
+-                        }
+-                    }
+-                };
+-                this.bluetoothGattCallback.addSubDelegate(subD);
+-                this.addDisconnectListener(onDisconnect);
+-                let gatt;
+-                // if less than Android23(Marshmallow)
+-                if (sdkVersion < MARSHMALLOW) {
+-                    gatt = bluetoothDevice.connectGatt(getContext(), // context
+-                    false, // autoconnect
+-                    this.bluetoothGattCallback);
+-                }
+-                else {
+-                    gatt = bluetoothDevice.connectGatt(getContext(), // context
+-                    false, // autoconnect
+-                    this.bluetoothGattCallback, args.transport !== undefined ? args.transport : android.bluetooth.BluetoothDevice.TRANSPORT_LE);
++
++            if ((this.connections[pUUID].device && this.bluetoothManager.getConnectedDevices(7).contains(bluetoothDevice)) || !!stateObject.onConnected) {
++              if (!stateObject.onConnected) {
++                if (Trace.isEnabled()) {
++                    CLog(CLogTypes.info, methodName, '---- Existing connection; re-upping to peripheral with UUID:', pUUID);
+                 }
+-                if (args.priority !== undefined) {
+-                    gatt.requestConnectionPriority(args.priority);
++                this.connections[pUUID].device.connect();
++                stateObject.onConnected = args.onConnected;
++              } else {
++                if (Trace.isEnabled()) {
++                    CLog(CLogTypes.info, methodName, '---- Existing connect request; piggy-backing connect to peripheral with UUID:', pUUID);
+                 }
+-                Object.assign(this.connections[pUUID], {
+-                    // state: 'connecting',
+-                    // onConnected: args.onConnected,
+-                    // onDisconnected: args.onDisconnected,
+-                    device: gatt
++                return new Promise((resolve) => {
++                  const prev = stateObject.onConnected;
++                  stateObject.onConnected = (dataToSend) => {
++                    prev(dataToSend);
++                    args.onConnected(dataToSend);
++                    resolve(dataToSend);
++                  };
+                 });
+-            });
++              }
++            } else {
++              if (Trace.isEnabled()) {
++                  CLog(CLogTypes.info, methodName, '---- Fresh connection to peripheral with UUID:', pUUID);
++              }
++              Object.assign(stateObject, {
++                  state: 'connecting',
++                  onConnected: args.onConnected,
++                  onDisconnected: args.onDisconnected
++                  // device: gatt // TODO rename device to gatt?
++              });
++              await new Promise((resolve, reject) => {
++                  const clearListeners = () => {
++                      this.bluetoothGattCallback.removeSubDelegate(subD);
++                      this.removeDisconnectListener(onDisconnect);
++                  };
++                  const onError = (err) => {
++                      reject(err);
++                      clearListeners();
++                  };
++                  const onDisconnect = (address) => {
++                      if (address === pUUID) {
++                          onError(new BluetoothError(BluetoothCommon.msg_peripheral_disconnected, {
++                              method: methodName,
++                              arguments: args
++                          }));
++                      }
++                  };
++                  const subD = {
++                      onConnectionStateChange: (gatt, status, newState) => {
++                          const device = gatt.getDevice();
++                          let UUID = null;
++                          if (device == null) {
++                              // happens some time, why ... ?
++                          }
++                          else {
++                              UUID = device.getAddress();
++                          }
++                          if (Trace.isEnabled()) {
++                              CLog(CLogTypes.info, methodName, '---- onConnectionStateChange:', UUID, pUUID, newState, status);
++                          }
++                          if (UUID === pUUID) {
++                              if (newState === android.bluetooth.BluetoothProfile.STATE_CONNECTED && status === GATT_SUCCESS) {
++                                  resolve();
++                              }
++                              else {
++                                  reject();
++                              }
++                              clearListeners();
++                          }
++                      }
++                  };
++                  this.bluetoothGattCallback.addSubDelegate(subD);
++                  this.addDisconnectListener(onDisconnect);
++                  let gatt;
++                  // if less than Android23(Marshmallow)
++                  if (sdkVersion < MARSHMALLOW) {
++                      gatt = bluetoothDevice.connectGatt(getContext(), // context
++                      false, // autoconnect
++                      this.bluetoothGattCallback);
++                  }
++                  else {
++                      gatt = bluetoothDevice.connectGatt(getContext(), // context
++                      false, // autoconnect
++                      this.bluetoothGattCallback, args.transport !== undefined ? args.transport : android.bluetooth.BluetoothDevice.TRANSPORT_LE);
++                  }
++                  if (args.priority !== undefined) {
++                      gatt.requestConnectionPriority(args.priority);
++                  }
++                  Object.assign(this.connections[pUUID], {
++                      // state: 'connecting',
++                      // onConnected: args.onConnected,
++                      // onDisconnected: args.onDisconnected,
++                      device: gatt
++                  });
++              });
++            }
+             let services, mtu;
+             if (args.autoDiscoverAll === true) {
+                 services = (await this.discoverAll({ peripheralUUID: pUUID }))?.services;
+@@ -1671,7 +1706,7 @@ export class Bluetooth extends BluetoothCommon {
+                     }
+                     const cUUID = uuidToString(characteristic.getUuid());
+                     const sUUID = uuidToString(characteristic.getService().getUuid());
+-                    const isReturningValue = sdkVersion >= 33;
++                    const isReturningValue = sdkVersion >= 33 && !(status === undefined && typeof valueOrStatus === 'number');
+                     const actualStatus = isReturningValue ? status : valueOrStatus;
+                     if (Trace.isEnabled()) {
+                         CLog(CLogTypes.info, `${methodName} ---- got result peripheralUUID:${pUUID} serviceUUID:${sUUID} characteristicUUID:${cUUID} status:${actualStatus}`);
+@@ -1851,15 +1886,18 @@ export class Bluetooth extends BluetoothCommon {
+             else {
+                 com.nativescript.bluetooth.Bluetooth.writeCharValue(characteristic, nArray);
+             }
++            return nArray;
+         }
+         else {
+             const type = typeof value;
+             if (type === 'string') {
+                 com.nativescript.bluetooth.Bluetooth.writeCharStringValue(characteristic, value, encoding);
++                return value;
+             }
+             else if (type === 'number') {
+-                com.nativescript.bluetooth.Bluetooth.writeCharValue(characteristic, arrayToNativeByteArray([value]));
+-                return arrayToNativeByteArray([value]);
++                const nativeByteArray = arrayToNativeByteArray([value]);
++                com.nativescript.bluetooth.Bluetooth.writeCharValue(characteristic, nativeByteArray);
++                return nativeByteArray;
+             }
+         }
+     }
+@@ -1918,11 +1956,11 @@ export class Bluetooth extends BluetoothCommon {
+                 }
+             }), (onError) => {
+                 try {
+-                    this.writeValueToChar(characteristic, args.value, args.encoding);
++                    const dataHandle = this.writeValueToChar(characteristic, args.value, args.encoding);
+                     characteristic.setWriteType(writeType);
+                     if (wrapper.gatt.writeCharacteristic(characteristic)) {
+                         if (Trace.isEnabled()) {
+-                            CLog(CLogTypes.info, methodName, '---- writeCharacteristic success');
++                            CLog(CLogTypes.info, methodName, `---- writeCharacteristic success ${typeof dataHandle}`);
+                         }
+                     }
+                     else {
+@@ -2281,12 +2319,24 @@ export class Bluetooth extends BluetoothCommon {
+                 this.disconnectListeners = this.disconnectListeners.filter((d) => d(address));
+             }
+             gatt.close();
++
++            if (Trace.isEnabled() && this.bluetoothManager.getConnectedDevices(7).contains(device)) {
++                CLog(CLogTypes.info, 'gattDisconnect ---- BluetoothDevice still connected!', address, device);
++            }
+             this.sendEvent(Bluetooth.device_disconnected_event, {
+                 UUID: address,
+                 name: device.getName()
+             });
+             const stateObject = this.connections[address];
+             stateObject.state = 'disconnected';
++            if (stateObject.onConnected) {
++                // remove false hope.
++                delete stateObject.onConnected;
++            }
++            if (stateObject.device === gatt) {
++                // remove reference to closed BluetoothGatt
++                delete stateObject.device;
++            }
+             if (stateObject && stateObject.onDisconnected) {
+                 stateObject.onDisconnected({
+                     UUID: address,

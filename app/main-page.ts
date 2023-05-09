@@ -5,6 +5,7 @@ let vm: HelloWorldModel;
 
 export function navigatingTo(args: EventData) {
   const page = <Page>args.object;
+  page.actionBarHidden = true;
   vm = new HelloWorldModel();
   page.bindingContext = vm;
 }

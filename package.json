@@ -3,15 +3,20 @@
   "main": "app/app.ts",
   "version": "1.0.0",
   "private": true,
+  "scripts": {
+    "prepare": "patch-package"
+  },
   "dependencies": {
     "@nativescript-community/ble": "^3.1.15",
     "@nativescript/core": "~8.5.0",
-    "@nativescript/flutter": "^0.1.0"
+    "@nativescript/flutter": "^0.1.2"
   },
   "devDependencies": {
+    "@nativescript/android": "8.5.0",
     "@nativescript/ios": "8.5.1",
     "@nativescript/types": "~8.5.0",
     "@nativescript/webpack": "~5.0.14",
+    "patch-package": "^7.0.0",
     "typescript": "~4.9.0"
   }
 }
