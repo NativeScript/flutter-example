@@ -1,6 +1,6 @@
 [Flutter](https://flutter.dev/) + [NativeScript](https://nativescript.org/) example to enable Bluetooth integration using [@nativescript-community/ble](https://github.com/nativescript-community/ble)
 
-https://user-images.githubusercontent.com/457187/236726940-f29032bd-3bdc-4bef-8588-49cf5936cb5d.MP4
+https://github.com/NativeScript/flutter-example/assets/457187/03c7d974-7c8b-4ac3-b172-cd9cf28aeb36
 
 **Prerequisites:**
 
