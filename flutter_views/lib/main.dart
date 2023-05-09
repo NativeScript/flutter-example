@@ -128,6 +128,11 @@ class _BluetoothPageState extends State<BluetoothPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.lightBlue.shade100,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light
+        ),
       ),
       body: Center(
         child: Column(mainAxisSize: MainAxisSize.max, children: <Widget>[

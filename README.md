@@ -9,11 +9,14 @@ https://github.com/NativeScript/flutter-example/assets/457187/03c7d974-7c8b-4ac3
 
 ## Try NativeScript with Flutter
 
+
 ```
 ns debug
 ```
 
-Note: To run on Android, be sure you have built the module first, for example --
+Choose `ios` or `android`.
+
+To run on Android, be sure you have built the module first:
 
 ```bash
 cd flutter_views/.android
