@@ -26,7 +26,7 @@ cd flutter_views/.android
 
 ## Develop Flutter module
 
-Run your Flutter module anytime to develop it futher in isolation:
+Run your Flutter module anytime to develop it further in isolation:
 
 ```
 cd flutter_views
